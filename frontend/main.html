@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kavach — Heat-Risk Safety System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #15130f;
+    --surface: #201c15;
+    --surface-2: #2a2419;
+    --line: #3a331f;
+    --amber: #f2a93b;
+    --amber-dim: #a87a2e;
+    --danger: #e4482b;
+    --danger-glow: rgba(228,72,43,0.35);
+    --safe: #3fa796;
+    --text: #f5efe2;
+    --text-muted: #a79b85;
+    --text-faint: #6b6250;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    background:
+      repeating-linear-gradient(115deg, rgba(242,169,59,0.025) 0 2px, transparent 2px 40px),
+      var(--bg);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{ background:var(--amber); color:#15130f; }
+  :focus-visible{ outline:2px solid var(--amber); outline-offset:2px; }
+
+  .hazard-rule{
+    height:6px;
+    background:repeating-linear-gradient(135deg, var(--amber) 0 10px, #15130f 10px 20px);
+    opacity:0.9;
+  }
+
+  /* ---------- Top bar ---------- */
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 28px;
+    border-bottom:1px solid var(--line);
+    background:var(--surface);
+  }
+  .brand{ display:flex; align-items:center; gap:10px; }
+  .brand-mark{
+    width:30px; height:30px; border-radius:6px;
+    background:var(--amber);
+    display:flex; align-items:center; justify-content:center;
+    color:#15130f; font-family:'Oswald',sans-serif; font-weight:700; font-size:16px;
+  }
+  .brand-name{ font-family:'Oswald',sans-serif; letter-spacing:0.08em; font-weight:600; font-size:16px; text-transform:uppercase; }
+  .brand-sub{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--text-faint); letter-spacing:0.05em; }
+  .user-chip{ display:flex; align-items:center; gap:10px; font-size:13px; color:var(--text-muted); }
+  .role-pill{
+    font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.06em;
+    padding:4px 10px; border-radius:20px; border:1px solid var(--amber-dim); color:var(--amber);
+    text-transform:uppercase;
+  }
+  .logout-btn{
+    background:none; border:1px solid var(--line); color:var(--text-muted);
+    font-size:12px; padding:6px 12px; border-radius:6px; cursor:pointer; font-family:'Inter',sans-serif;
+  }
+  .logout-btn:hover{ border-color:var(--amber-dim); color:var(--amber); }
+
+  /* ---------- Login screen ---------- */
+  .login-screen{
+    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  .login-card{
+    width:100%; max-width:420px;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:10px;
+    overflow:hidden;
+  }
+  .login-header{ padding:32px 32px 20px; text-align:center; }
+  .login-mark{
+    width:56px; height:56px; margin:0 auto 16px; border-radius:12px;
+    background:var(--amber); display:flex; align-items:center; justify-content:center;
+    color:#15130f; font-family:'Oswald',sans-serif; font-weight:700; font-size:26px;
+  }
+  .login-title{ font-family:'Oswald',sans-serif; text-transform:uppercase; letter-spacing:0.1em; font-size:22px; font-weight:600; }
+  .login-tag{ color:var(--text-muted); font-size:13px; margin-top:6px; }
+  .login-body{ padding:8px 32px 32px; }
+  .field{ margin-bottom:16px; }
+  .field label{ display:block; font-size:12px; color:var(--text-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.05em; }
+  .field input, .field select{
+    width:100%; padding:11px 12px; background:var(--surface-2); border:1px solid var(--line);
+    color:var(--text); border-radius:6px; font-size:14px; font-family:'Inter',sans-serif;
+  }
+  .role-toggle{ display:flex; gap:8px; }
+  .role-toggle button{
+    flex:1; padding:12px; background:var(--surface-2); border:1px solid var(--line); border-radius:6px;
+    color:var(--text-muted); font-size:13px; cursor:pointer; font-family:'Inter',sans-serif; font-weight:500;
+  }
+  .role-toggle button.active{ border-color:var(--amber); color:var(--amber); background:rgba(242,169,59,0.08); }
+  .btn-primary{
+    width:100%; padding:13px; background:var(--amber); border:none; border-radius:6px;
+    color:#15130f; font-weight:700; font-size:14px; cursor:pointer; margin-top:6px;
+    text-transform:uppercase; letter-spacing:0.05em; font-family:'Oswald',sans-serif;
+  }
+  .btn-primary:hover{ background:#ffb94d; }
+  .login-foot{ text-align:center; padding:14px; font-size:11px; color:var(--text-faint); border-top:1px solid var(--line); font-family:'IBM Plex Mono',monospace;}
+
+  /* ---------- App shell ---------- */
+  .app{ display:none; }
+  .app.visible{ display:block; }
+  .tabs{ display:flex; gap:2px; padding:0 28px; background:var(--surface); border-bottom:1px solid var(--line); }
+  .tab{
+    padding:14px 18px; font-size:13px; color:var(--text-muted); cursor:pointer;
+    border-bottom:2px solid transparent; font-family:'Oswald',sans-serif; text-transform:uppercase; letter-spacing:0.04em;
+  }
+  .tab.active{ color:var(--amber); border-bottom-color:var(--amber); }
+  .view{ display:none; padding:28px; max-width:1200px; margin:0 auto; }
+  .view.active{ display:block; }
+
+  .grid{ display:grid; grid-template-columns: 1.1fr 1fr; gap:20px; }
+  @media (max-width:880px){ .grid{ grid-template-columns:1fr; } }
+
+  .panel{
+    background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:22px;
+  }
+  .panel-title{
+    font-family:'Oswald',sans-serif; text-transform:uppercase; letter-spacing:0.06em; font-size:13px;
+    color:var(--text-muted); margin-bottom:16px; display:flex; align-items:center; justify-content:space-between;
+  }
+  .live-dot{
+    display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--safe);
+    box-shadow:0 0 0 0 rgba(63,167,150,0.6); animation:pulse 2s infinite;
+  }
+  @keyframes pulse{
+    0%{ box-shadow:0 0 0 0 rgba(63,167,150,0.5);}
+    70%{ box-shadow:0 0 0 8px rgba(63,167,150,0);}
+    100%{ box-shadow:0 0 0 0 rgba(63,167,150,0);}
+  }
+
+  /* ---------- Gauge (signature element) ---------- */
+  .gauge-wrap{ display:flex; flex-direction:column; align-items:center; padding:10px 0 4px; }
+  .gauge-value{ font-family:'IBM Plex Mono',monospace; font-size:15px; color:var(--text-faint); margin-top:6px; letter-spacing:0.05em;}
+  .gauge-label{ font-family:'Oswald',sans-serif; font-size:20px; text-transform:uppercase; letter-spacing:0.06em; margin-top:2px; }
+  .gauge-desc{ font-size:12px; color:var(--text-muted); margin-top:6px; text-align:center; max-width:280px; }
+
+  /* ---------- Form ---------- */
+  .form-row{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px; }
+  .form-row.single{ grid-template-columns:1fr; }
+  .chip-select{ display:flex; flex-wrap:wrap; gap:8px; }
+  .chip{
+    padding:8px 13px; border:1px solid var(--line); border-radius:20px; font-size:12.5px;
+    color:var(--text-muted); cursor:pointer; background:var(--surface-2);
+  }
+  .chip.active{ border-color:var(--amber); color:var(--amber); background:rgba(242,169,59,0.1); }
+  .slider-row{ margin-bottom:14px; }
+  .slider-row label{ display:flex; justify-content:space-between; font-size:12px; color:var(--text-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.04em;}
+  .slider-row output{ font-family:'IBM Plex Mono',monospace; color:var(--amber); }
+  input[type=range]{ width:100%; accent-color:var(--amber); }
+
+  .weather-strip{ display:flex; gap:18px; margin-top:4px; flex-wrap:wrap; }
+  .weather-item{ flex:1; min-width:90px; }
+  .weather-item .wv{ font-family:'IBM Plex Mono',monospace; font-size:22px; color:var(--text); }
+  .weather-item .wl{ font-size:11px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.05em; margin-top:2px;}
+
+  .rec-list{ list-style:none; }
+  .rec-list li{
+    display:flex; gap:10px; padding:10px 0; border-bottom:1px solid var(--line); font-size:13.5px; align-items:flex-start;
+  }
+  .rec-list li:last-child{ border-bottom:none; }
+  .rec-icon{ font-family:'IBM Plex Mono',monospace; color:var(--amber); font-size:12px; margin-top:2px; }
+
+  .alert-banner{
+    display:none; align-items:center; gap:12px; padding:14px 18px; border-radius:8px;
+    background:rgba(228,72,43,0.12); border:1px solid var(--danger); margin-bottom:20px;
+  }
+  .alert-banner.show{ display:flex; }
+  .alert-banner .dot{ width:10px; height:10px; border-radius:50%; background:var(--danger); box-shadow:0 0 12px var(--danger-glow); flex-shrink:0; }
+  .alert-banner .txt strong{ color:var(--danger); font-family:'Oswald',sans-serif; letter-spacing:0.04em; }
+  .alert-banner .txt div{ font-size:12.5px; color:var(--text-muted); margin-top:2px; }
+  .ack-btn{
+    margin-left:auto; background:var(--danger); border:none; color:#15130f; font-weight:700;
+    padding:8px 14px; border-radius:6px; cursor:pointer; font-size:12px; text-transform:uppercase; font-family:'Oswald',sans-serif;
+  }
+
+  /* ---------- Supervisor table ---------- */
+  .worker-table{ width:100%; border-collapse:collapse; }
+  .worker-table th{
+    text-align:left; font-size:11px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.05em;
+    padding:10px 12px; border-bottom:1px solid var(--line); font-weight:500;
+  }
+  .worker-table td{ padding:12px; border-bottom:1px solid var(--line); font-size:13.5px; }
+  .worker-table tr:last-child td{ border-bottom:none; }
+  .risk-badge{
+    display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:20px; font-size:11.5px;
+    font-family:'IBM Plex Mono',monospace; text-transform:uppercase;
+  }
+  .risk-badge .d{ width:7px; height:7px; border-radius:50%; }
+  .risk-low{ background:rgba(63,167,150,0.12); color:var(--safe); }
+  .risk-low .d{ background:var(--safe); }
+  .risk-mod{ background:rgba(242,169,59,0.12); color:var(--amber); }
+  .risk-mod .d{ background:var(--amber); }
+  .risk-high{ background:rgba(228,72,43,0.14); color:var(--danger); }
+  .risk-high .d{ background:var(--danger); }
+  .locate-btn{
+    background:none; border:1px solid var(--line); color:var(--text-muted); font-size:11px;
+    padding:5px 10px; border-radius:5px; cursor:pointer; font-family:'IBM Plex Mono',monospace;
+  }
+  .locate-btn:hover{ border-color:var(--amber); color:var(--amber); }
+
+  .stat-row{ display:flex; gap:14px; margin-bottom:20px; flex-wrap:wrap; }
+  .stat-card{ flex:1; min-width:130px; background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:16px 18px; }
+  .stat-card .sv{ font-family:'IBM Plex Mono',monospace; font-size:26px; }
+  .stat-card .sl{ font-size:11px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.05em; margin-top:4px; }
+
+  .footnote{ font-size:11px; color:var(--text-faint); margin-top:18px; font-family:'IBM Plex Mono',monospace; line-height:1.6; }
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-card">
+    <div class="login-header">
+      <div class="login-mark">K</div>
+      <div class="login-title">Kavach</div>
+      <div class="login-tag">Real-time heat-stress protection for outdoor workers</div>
+    </div>
+    <div class="hazard-rule"></div>
+    <div class="login-body">
+      <div class="field">
+        <label>Name</label>
+        <input id="loginName" type="text" placeholder="e.g. Ramesh Kumar" value="Ramesh Kumar">
+      </div>
+      <div class="field">
+        <label>Sign in as</label>
+        <div class="role-toggle">
+          <button type="button" class="active" data-role="worker" onclick="selectRole('worker')">Worker</button>
+          <button type="button" data-role="supervisor" onclick="selectRole('supervisor')">Supervisor</button>
+        </div>
+      </div>
+      <button class="btn-primary" onclick="login()">Enter Dashboard</button>
+    </div>
+    <div class="login-foot">DEMO PROTOTYPE · OFFLINE DATA CACHE ENABLED</div>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div class="app" id="app">
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">K</div>
+      <div>
+        <div class="brand-name">Kavach</div>
+        <div class="brand-sub" id="locationTag">HYPERLOCAL · FETCHING SITE WEATHER…</div>
+      </div>
+    </div>
+    <div class="user-chip">
+      <span id="userNameTag">Ramesh Kumar</span>
+      <span class="role-pill" id="rolePill">Worker</span>
+      <button class="logout-btn" onclick="logout()">Log out</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab" id="tabWorker" onclick="showView('worker')">Worker View</div>
+    <div class="tab" id="tabSupervisor" onclick="showView('supervisor')">Supervisor View</div>
+  </div>
+
+  <!-- ===== WORKER VIEW ===== -->
+  <div class="view" id="viewWorker">
+
+    <div class="alert-banner" id="alertBanner">
+      <div class="dot"></div>
+      <div class="txt">
+        <strong>SEVERE HEAT-STRESS RISK DETECTED</strong>
+        <div>Symptoms pattern matches early heat-exhaustion. Supervisor and emergency contact have been notified.</div>
+      </div>
+      <button class="ack-btn" onclick="ackAlert()">Acknowledge</button>
+    </div>
+
+    <div class="grid">
+      <!-- Risk gauge panel -->
+      <div class="panel">
+        <div class="panel-title">Personal Heat-Risk Score <span><span class="live-dot"></span> live</span></div>
+        <div class="gauge-wrap">
+          <svg width="240" height="150" viewBox="0 0 240 150">
+            <path d="M 20 130 A 100 100 0 0 1 220 130" fill="none" stroke="#3a331f" stroke-width="16" stroke-linecap="round"/>
+            <path id="gaugeArc" d="M 20 130 A 100 100 0 0 1 220 130" fill="none" stroke="#3fa796" stroke-width="16" stroke-linecap="round"
+                  stroke-dasharray="314" stroke-dashoffset="220"/>
+            <g id="needle" style="transform-origin:120px 130px; transform:rotate(-90deg); transition:transform 0.6s ease;">
+              <line x1="120" y1="130" x2="120" y2="45" stroke="#f5efe2" stroke-width="3" stroke-linecap="round"/>
+              <circle cx="120" cy="130" r="7" fill="#f5efe2"/>
+            </g>
+          </svg>
+          <div class="gauge-value" id="gaugeScore">32 / 100</div>
+          <div class="gauge-label" id="gaugeLabel" style="color:#3fa796;">LOW RISK</div>
+          <div class="gauge-desc" id="gaugeDesc">Conditions are manageable. Maintain normal hydration schedule.</div>
+        </div>
+      </div>
+
+      <!-- Weather + inputs -->
+      <div class="panel">
+        <div class="panel-title">Hyperlocal Conditions</div>
+        <div class="weather-strip">
+          <div class="weather-item"><div class="wv" id="wTemp">34°C</div><div class="wl">Air Temp</div></div>
+          <div class="weather-item"><div class="wv" id="wHum">61%</div><div class="wl">Humidity</div></div>
+          <div class="weather-item"><div class="wv" id="wIndex">41°C</div><div class="wl">Heat Index</div></div>
+        </div>
+        <div class="footnote">Source: OpenWeather API · site-level pull · updates every 10 min</div>
+      </div>
+    </div>
+
+    <br>
+
+    <div class="grid">
+      <!-- Input dashboard -->
+      <div class="panel">
+        <div class="panel-title">Shift Input Dashboard</div>
+
+        <div class="form-row single">
+          <div>
+            <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em;">Type of Work</label>
+            <div class="chip-select" id="workTypeChips">
+              <div class="chip active" data-val="moderate">Delivery / Walking</div>
+              <div class="chip" data-val="heavy">Construction / Digging</div>
+              <div class="chip" data-val="light">Vending / Standing</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-row single">
+          <div>
+            <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em;">Clothing</label>
+            <div class="chip-select" id="clothingChips">
+              <div class="chip active" data-val="light">Light, breathable</div>
+              <div class="chip" data-val="heavy">Heavy / dark / PPE</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="slider-row">
+          <label>Hydration since shift start <output id="hydrationOut">3 glasses</output></label>
+          <input type="range" id="hydrationSlider" min="0" max="8" value="3" oninput="updateRisk()">
+        </div>
+        <div class="slider-row">
+          <label>Minutes since last rest break <output id="restOut">45 min</output></label>
+          <input type="range" id="restSlider" min="0" max="180" value="45" step="5" oninput="updateRisk()">
+        </div>
+
+        <div class="form-row single">
+          <div>
+            <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em;">Pre-existing condition</label>
+            <div class="chip-select" id="healthChips">
+              <div class="chip active" data-val="none">None reported</div>
+              <div class="chip" data-val="cardiac">Cardiac / BP</div>
+              <div class="chip" data-val="other">Other</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recommendations -->
+      <div class="panel">
+        <div class="panel-title">Guidance For This Shift</div>
+        <ul class="rec-list" id="recList">
+          <!-- populated by JS -->
+        </ul>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===== SUPERVISOR VIEW ===== -->
+  <div class="view" id="viewSupervisor">
+    <div class="stat-row">
+      <div class="stat-card"><div class="sv" style="color:var(--danger)">1</div><div class="sl">High risk now</div></div>
+      <div class="stat-card"><div class="sv" style="color:var(--amber)">2</div><div class="sl">Moderate risk</div></div>
+      <div class="stat-card"><div class="sv" style="color:var(--safe)">4</div><div class="sl">Low risk</div></div>
+      <div class="stat-card"><div class="sv">38°C</div><div class="sl">Site heat index</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Crew Status <span><span class="live-dot"></span> live</span></div>
+      <table class="worker-table">
+        <thead>
+          <tr><th>Worker</th><th>Role</th><th>Risk</th><th>Shift Time</th><th>Last Break</th><th></th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Ramesh Kumar</td><td>Delivery</td>
+            <td><span class="risk-badge risk-mod"><span class="d"></span>Moderate</span></td>
+            <td>3h 20m</td><td>45 min ago</td>
+            <td><button class="locate-btn" onclick="alert('Opening live location for Ramesh Kumar…')">Locate</button></td>
+          </tr>
+          <tr>
+            <td>Sunita Devi</td><td>Sanitation</td>
+            <td><span class="risk-badge risk-high"><span class="d"></span>High</span></td>
+            <td>4h 05m</td><td>1h 50m ago</td>
+            <td><button class="locate-btn" onclick="alert('Opening live location for Sunita Devi…')">Locate</button></td>
+          </tr>
+          <tr>
+            <td>Arjun Yadav</td><td>Construction</td>
+            <td><span class="risk-badge risk-low"><span class="d"></span>Low</span></td>
+            <td>1h 10m</td><td>15 min ago</td>
+            <td><button class="locate-btn" onclick="alert('Opening live location for Arjun Yadav…')">Locate</button></td>
+          </tr>
+          <tr>
+            <td>Meena Patil</td><td>Street Vendor</td>
+            <td><span class="risk-badge risk-low"><span class="d"></span>Low</span></td>
+            <td>5h 40m</td><td>30 min ago</td>
+            <td><button class="locate-btn" onclick="alert('Opening live location for Meena Patil…')">Locate</button></td>
+          </tr>
+          <tr>
+            <td>Farooq Sheikh</td><td>Traffic Police</td>
+            <td><span class="risk-badge risk-mod"><span class="d"></span>Moderate</span></td>
+            <td>2h 55m</td><td>1h 05m ago</td>
+            <td><button class="locate-btn" onclick="alert('Opening live location for Farooq Sheikh…')">Locate</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="footnote">Tap "Locate" to pull live GPS for a flagged worker · Escalation auto-notifies emergency contact after 2 missed acknowledgements</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ---------------- Login / role handling ----------------
+  let currentRole = 'worker';
+  function selectRole(role){
+    currentRole = role;
+    document.querySelectorAll('.role-toggle button').forEach(b=>{
+      b.classList.toggle('active', b.dataset.role===role);
+    });
+  }
+  function login(){
+    const name = document.getElementById('loginName').value || 'Worker';
+    document.getElementById('userNameTag').textContent = name;
+    document.getElementById('rolePill').textContent = currentRole === 'worker' ? 'Worker' : 'Supervisor';
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('app').classList.add('visible');
+    showView(currentRole === 'worker' ? 'worker' : 'supervisor');
+    simulateWeatherFetch();
+    updateRisk();
+  }
+  function logout(){
+    document.getElementById('app').classList.remove('visible');
+    document.getElementById('loginScreen').style.display = 'flex';
+  }
+
+  // ---------------- Tabs ----------------
+  function showView(view){
+    document.getElementById('viewWorker').classList.toggle('active', view==='worker');
+    document.getElementById('viewSupervisor').classList.toggle('active', view==='supervisor');
+    document.getElementById('tabWorker').classList.toggle('active', view==='worker');
+    document.getElementById('tabSupervisor').classList.toggle('active', view==='supervisor');
+  }
+
+  // ---------------- Chip selects ----------------
+  document.querySelectorAll('.chip-select').forEach(group=>{
+    group.addEventListener('click', (e)=>{
+      const chip = e.target.closest('.chip');
+      if(!chip) return;
+      group.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+      chip.classList.add('active');
+      updateRisk();
+    });
+  });
+
+  // ---------------- Simulated hyperlocal weather fetch ----------------
+  // In production: replace with a live call to OpenWeather's onecall/current endpoint
+  // using the worker's device GPS coordinates, refreshed on an interval.
+  function simulateWeatherFetch(){
+    setTimeout(()=>{
+      document.getElementById('locationTag').textContent = 'SITE: SECTOR 12, PUNE · UPDATED JUST NOW';
+    }, 700);
+  }
+
+  // ---------------- Risk model ----------------
+  function getChipVal(id){
+    const active = document.querySelector('#'+id+' .chip.active');
+    return active ? active.dataset.val : null;
+  }
+
+  function updateRisk(){
+    const work = getChipVal('workTypeChips');       // light | moderate | heavy
+    const clothing = getChipVal('clothingChips');    // light | heavy
+    const health = getChipVal('healthChips');        // none | cardiac | other
+    const hydration = parseInt(document.getElementById('hydrationSlider').value);
+    const restMins = parseInt(document.getElementById('restSlider').value);
+
+    document.getElementById('hydrationOut').textContent = hydration + ' glass' + (hydration===1?'':'es');
+    document.getElementById('restOut').textContent = restMins + ' min';
+
+    // Base from simulated heat index
+    let score = 28;
+    if(work === 'heavy') score += 24;
+    else if(work === 'moderate') score += 12;
+
+    if(clothing === 'heavy') score += 12;
+    if(health === 'cardiac') score += 15;
+    else if(health === 'other') score += 6;
+
+    score += Math.max(0, (4 - hydration)) * 5;      // under-hydrated
+    score += Math.max(0, (restMins - 60) / 10) * 3;  // overdue for a break
+
+    score = Math.min(100, Math.max(0, Math.round(score)));
+
+    // Update gauge
+    const pct = score / 100;
+    const angle = -90 + (pct * 180);
+    document.getElementById('needle').style.transform = `rotate(${angle}deg)`;
+
+    const arc = document.getElementById('gaugeArc');
+    const offset = 314 - (pct * 314);
+    arc.style.strokeDashoffset = offset;
+
+    let color, label, desc;
+    if(score < 40){
+      color = '#3fa796'; label = 'LOW RISK';
+      desc = 'Conditions are manageable. Maintain normal hydration schedule.';
+    } else if(score < 70){
+      color = '#f2a93b'; label = 'MODERATE RISK';
+      desc = 'Take a shaded break within 15 minutes and increase water intake.';
+    } else {
+      color = '#e4482b'; label = 'HIGH RISK';
+      desc = 'Stop heavy activity now. Move to shade, hydrate, and await check-in.';
+    }
+    arc.setAttribute('stroke', color);
+    document.getElementById('gaugeLabel').textContent = label;
+    document.getElementById('gaugeLabel').style.color = color;
+    document.getElementById('gaugeDesc').textContent = desc;
+    document.getElementById('gaugeScore').textContent = score + ' / 100';
+
+    document.getElementById('alertBanner').classList.toggle('show', score >= 85);
+
+    renderRecommendations(score, hydration, restMins, health);
+  }
+
+  function renderRecommendations(score, hydration, restMins, health){
+    const list = document.getElementById('recList');
+    const items = [];
+
+    if(score >= 85){
+      items.push(['⚠', 'Stop work immediately and move to a shaded or cooled area.']);
+      items.push(['⚠', 'Supervisor and emergency contact are being notified now.']);
+    } else if(score >= 70){
+      items.push(['!', 'Take a 15-minute shaded rest break as soon as possible.']);
+      items.push(['!', 'Drink 2 glasses of water in the next 20 minutes.']);
+    } else if(score >= 40){
+      items.push(['·', 'Plan a shaded break within the hour.']);
+      items.push(['·', 'Keep sipping water even if not thirsty.']);
+    } else {
+      items.push(['·', 'No immediate action needed — conditions are within safe range.']);
+    }
+
+    if(restMins > 90){
+      items.push(['·', `It has been ${restMins} minutes since your last break — schedule one soon.`]);
+    }
+    if(hydration < 3){
+      items.push(['·', 'Hydration is below the recommended pace for this heat index.']);
+    }
+    if(health === 'cardiac'){
+      items.push(['·', 'Reported cardiac/BP condition — thresholds have been tightened for your profile.']);
+    }
+
+    list.innerHTML = items.map(([icon, text]) =>
+      `<li><span class="rec-icon">${icon}</span><span>${text}</span></li>`
+    ).join('');
+  }
+
+  function ackAlert(){
+    document.getElementById('alertBanner').classList.remove('show');
+  }
+</script>
+
+</body>
+</html>
