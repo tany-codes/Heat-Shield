@@ -428,6 +428,29 @@
 </div>
 
 <script>
+  // ---------------- Backend config ----------------
+  // Point this at your deployed FastAPI backend. Defaults to local dev server.
+  const API_BASE = window.HEATSHIELD_API_BASE || 'http://localhost:8000';
+  let currentWorkerId = null;
+  let currentLat = 18.5204, currentLon = 73.8567; // fallback: Pune, matches demo location tag
+  let backendOnline = true;
+  let supervisorInterval = null;
+
+  async function apiPost(path, body){
+    const res = await fetch(API_BASE + path, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    if(!res.ok) throw new Error('API error ' + res.status);
+    return res.json();
+  }
+  async function apiGet(path){
+    const res = await fetch(API_BASE + path);
+    if(!res.ok) throw new Error('API error ' + res.status);
+    return res.json();
+  }
+
   // ---------------- Login / role handling ----------------
   let currentRole = 'worker';
   function selectRole(role){
@@ -436,19 +459,30 @@
       b.classList.toggle('active', b.dataset.role===role);
     });
   }
-  function login(){
+  async function login(){
     const name = document.getElementById('loginName').value || 'Worker';
     document.getElementById('userNameTag').textContent = name;
     document.getElementById('rolePill').textContent = currentRole === 'worker' ? 'Worker' : 'Supervisor';
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('app').classList.add('visible');
+
+    try{
+      const data = await apiPost('/api/login', {name, role: currentRole});
+      currentWorkerId = data.worker_id;
+      backendOnline = true;
+    } catch(e){
+      // Backend unreachable — demo still works on the local fallback model.
+      backendOnline = false;
+      console.warn('Heat-Shield backend unreachable, using offline fallback:', e);
+    }
+
     showView(currentRole === 'worker' ? 'worker' : 'supervisor');
-    simulateWeatherFetch();
-    updateRisk();
+    locateAndRefresh();
   }
   function logout(){
     document.getElementById('app').classList.remove('visible');
     document.getElementById('loginScreen').style.display = 'flex';
+    if(supervisorInterval) clearInterval(supervisorInterval);
   }
 
   // ---------------- Tabs ----------------
@@ -457,6 +491,11 @@
     document.getElementById('viewSupervisor').classList.toggle('active', view==='supervisor');
     document.getElementById('tabWorker').classList.toggle('active', view==='worker');
     document.getElementById('tabSupervisor').classList.toggle('active', view==='supervisor');
+
+    if(view === 'supervisor'){
+      loadSupervisorTable();
+      if(!supervisorInterval) supervisorInterval = setInterval(loadSupervisorTable, 15000);
+    }
   }
 
   // ---------------- Chip selects ----------------
@@ -466,17 +505,26 @@
       if(!chip) return;
       group.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
       chip.classList.add('active');
-      updateRisk();
+      refreshRisk();
     });
   });
 
-  // ---------------- Simulated hyperlocal weather fetch ----------------
-  // In production: replace with a live call to OpenWeather's onecall/current endpoint
-  // using the worker's device GPS coordinates, refreshed on an interval.
-  function simulateWeatherFetch(){
-    setTimeout(()=>{
-      document.getElementById('locationTag').textContent = 'SITE: SECTOR 12, PUNE · UPDATED JUST NOW';
-    }, 700);
+  // ---------------- Geolocation ----------------
+  function locateAndRefresh(){
+    document.getElementById('locationTag').textContent = 'HYPERLOCAL · FETCHING SITE WEATHER…';
+    if(navigator.geolocation){
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          currentLat = pos.coords.latitude;
+          currentLon = pos.coords.longitude;
+          refreshRisk();
+        },
+        () => refreshRisk(), // permission denied — fall back to default site coords
+        { timeout: 5000 }
+      );
+    } else {
+      refreshRisk();
+    }
   }
 
   // ---------------- Risk model ----------------
@@ -485,7 +533,7 @@
     return active ? active.dataset.val : null;
   }
 
-  function updateRisk(){
+  async function refreshRisk(){
     const work = getChipVal('workTypeChips');       // light | moderate | heavy
     const clothing = getChipVal('clothingChips');    // light | heavy
     const health = getChipVal('healthChips');        // none | cardiac | other
@@ -495,21 +543,70 @@
     document.getElementById('hydrationOut').textContent = hydration + ' glass' + (hydration===1?'':'es');
     document.getElementById('restOut').textContent = restMins + ' min';
 
-    // Base from simulated heat index
+    let result;
+    try{
+      if(!backendOnline || !currentWorkerId) throw new Error('no backend session');
+      result = await apiPost('/api/readings', {
+        worker_id: currentWorkerId,
+        lat: currentLat,
+        lon: currentLon,
+        work_type: work,
+        clothing: clothing,
+        hydration_glasses: hydration,
+        rest_minutes: restMins,
+        health: health
+      });
+      document.getElementById('locationTag').textContent = 'HYPERLOCAL · UPDATED JUST NOW';
+    } catch(e){
+      // Backend/network unavailable — compute locally so the demo never breaks.
+      result = calcLocalFallback(work, clothing, health, hydration, restMins);
+      document.getElementById('locationTag').textContent = 'OFFLINE MODE · USING CACHED MODEL';
+    }
+
+    renderRiskUI(result);
+  }
+
+  // Same formula the backend uses, kept here purely as an offline fallback
+  // for when the API can't be reached during the demo.
+  function calcLocalFallback(work, clothing, health, hydration, restMins){
+    const temp_c = 34.0, humidity = 60.0;
     let score = 28;
     if(work === 'heavy') score += 24;
     else if(work === 'moderate') score += 12;
-
     if(clothing === 'heavy') score += 12;
     if(health === 'cardiac') score += 15;
     else if(health === 'other') score += 6;
-
-    score += Math.max(0, (4 - hydration)) * 5;      // under-hydrated
-    score += Math.max(0, (restMins - 60) / 10) * 3;  // overdue for a break
-
+    score += Math.max(0, (4 - hydration)) * 5;
+    score += Math.max(0, (restMins - 60) / 10) * 3;
     score = Math.min(100, Math.max(0, Math.round(score)));
 
-    // Update gauge
+    let label, level, desc;
+    if(score < 40){ label='LOW RISK'; level='low'; desc='Conditions are manageable. Maintain normal hydration schedule.'; }
+    else if(score < 70){ label='MODERATE RISK'; level='moderate'; desc='Take a shaded break within 15 minutes and increase water intake.'; }
+    else { label='HIGH RISK'; level='high'; desc='Stop heavy activity now. Move to shade, hydrate, and await check-in.'; }
+
+    const recommendations = [];
+    if(score >= 85){
+      recommendations.push('Stop work immediately and move to a shaded or cooled area.');
+      recommendations.push('Supervisor and emergency contact are being notified now.');
+    } else if(score >= 70){
+      recommendations.push('Take a 15-minute shaded rest break as soon as possible.');
+      recommendations.push('Drink 2 glasses of water in the next 20 minutes.');
+    } else if(score >= 40){
+      recommendations.push('Plan a shaded break within the hour.');
+      recommendations.push('Keep sipping water even if not thirsty.');
+    } else {
+      recommendations.push('No immediate action needed — conditions are within safe range.');
+    }
+    if(restMins > 90) recommendations.push(`It has been ${restMins} minutes since your last break — schedule one soon.`);
+    if(hydration < 3) recommendations.push('Hydration is below the recommended pace for this heat index.');
+    if(health === 'cardiac') recommendations.push('Reported cardiac/BP condition — thresholds have been tightened for your profile.');
+
+    return { temp_c, humidity, heat_index_c: temp_c + 8, score, label, level, description: desc, recommendations, alert: score >= 85 };
+  }
+
+  function renderRiskUI(result){
+    const score = result.score;
     const pct = score / 100;
     const angle = -90 + (pct * 180);
     document.getElementById('needle').style.transform = `rotate(${angle}deg)`;
@@ -518,62 +615,71 @@
     const offset = 314 - (pct * 314);
     arc.style.strokeDashoffset = offset;
 
-    let color, label, desc;
-    if(score < 40){
-      color = '#3fa796'; label = 'LOW RISK';
-      desc = 'Conditions are manageable. Maintain normal hydration schedule.';
-    } else if(score < 70){
-      color = '#f2a93b'; label = 'MODERATE RISK';
-      desc = 'Take a shaded break within 15 minutes and increase water intake.';
-    } else {
-      color = '#e4482b'; label = 'HIGH RISK';
-      desc = 'Stop heavy activity now. Move to shade, hydrate, and await check-in.';
-    }
+    const colors = { low: '#3fa796', moderate: '#f2a93b', high: '#e4482b' };
+    const color = colors[result.level] || '#3fa796';
+
     arc.setAttribute('stroke', color);
-    document.getElementById('gaugeLabel').textContent = label;
+    document.getElementById('gaugeLabel').textContent = result.label;
     document.getElementById('gaugeLabel').style.color = color;
-    document.getElementById('gaugeDesc').textContent = desc;
+    document.getElementById('gaugeDesc').textContent = result.description;
     document.getElementById('gaugeScore').textContent = score + ' / 100';
 
-    document.getElementById('alertBanner').classList.toggle('show', score >= 85);
+    document.getElementById('wTemp').textContent = result.temp_c + '°C';
+    document.getElementById('wHum').textContent = result.humidity + '%';
+    document.getElementById('wIndex').textContent = result.heat_index_c + '°C';
 
-    renderRecommendations(score, hydration, restMins, health);
-  }
+    document.getElementById('alertBanner').classList.toggle('show', result.alert);
 
-  function renderRecommendations(score, hydration, restMins, health){
     const list = document.getElementById('recList');
-    const items = [];
-
-    if(score >= 85){
-      items.push(['⚠', 'Stop work immediately and move to a shaded or cooled area.']);
-      items.push(['⚠', 'Supervisor and emergency contact are being notified now.']);
-    } else if(score >= 70){
-      items.push(['!', 'Take a 15-minute shaded rest break as soon as possible.']);
-      items.push(['!', 'Drink 2 glasses of water in the next 20 minutes.']);
-    } else if(score >= 40){
-      items.push(['·', 'Plan a shaded break within the hour.']);
-      items.push(['·', 'Keep sipping water even if not thirsty.']);
-    } else {
-      items.push(['·', 'No immediate action needed — conditions are within safe range.']);
-    }
-
-    if(restMins > 90){
-      items.push(['·', `It has been ${restMins} minutes since your last break — schedule one soon.`]);
-    }
-    if(hydration < 3){
-      items.push(['·', 'Hydration is below the recommended pace for this heat index.']);
-    }
-    if(health === 'cardiac'){
-      items.push(['·', 'Reported cardiac/BP condition — thresholds have been tightened for your profile.']);
-    }
-
-    list.innerHTML = items.map(([icon, text]) =>
-      `<li><span class="rec-icon">${icon}</span><span>${text}</span></li>`
+    list.innerHTML = result.recommendations.map(text =>
+      `<li><span class="rec-icon">·</span><span>${text}</span></li>`
     ).join('');
   }
 
   function ackAlert(){
     document.getElementById('alertBanner').classList.remove('show');
+  }
+
+  // ---------------- Supervisor crew table ----------------
+  const levelToBadge = { low: 'risk-low', moderate: 'risk-mod', high: 'risk-high' };
+  const levelToText = { low: 'Low', moderate: 'Moderate', high: 'High' };
+
+  async function loadSupervisorTable(){
+    let workers;
+    try{
+      workers = await apiGet('/api/workers');
+    } catch(e){
+      console.warn('Could not load crew roster from backend:', e);
+      return; // leave existing static demo rows in place
+    }
+
+    const tbody = document.querySelector('.worker-table tbody');
+    if(!tbody) return;
+
+    const rows = workers.map(w => {
+      const level = w.level || 'low';
+      const badge = levelToBadge[level] || 'risk-low';
+      const riskText = w.score != null ? `${levelToText[level] || 'Low'}` : '—';
+      const shift = w.shift_minutes != null ? `${Math.floor(w.shift_minutes/60)}h ${w.shift_minutes%60}m` : '—';
+      const lastBreak = w.minutes_since_reading != null ? `${w.minutes_since_reading} min ago` : 'No data yet';
+      return `<tr>
+        <td>${w.name}</td><td>${w.job_role}</td>
+        <td><span class="risk-badge ${badge}"><span class="d"></span>${riskText}</span></td>
+        <td>${shift}</td><td>${lastBreak}</td>
+        <td><button class="locate-btn" onclick="alert('Opening live location for ${w.name}…')">Locate</button></td>
+      </tr>`;
+    });
+
+    const statCounts = { low: 0, moderate: 0, high: 0 };
+    workers.forEach(w => { if(w.level) statCounts[w.level] = (statCounts[w.level]||0) + 1; });
+    const statCards = document.querySelectorAll('.stat-card .sv');
+    if(statCards.length >= 3){
+      statCards[0].textContent = statCounts.high;
+      statCards[1].textContent = statCounts.moderate;
+      statCards[2].textContent = statCounts.low;
+    }
+
+    if(rows.length) tbody.innerHTML = rows.join('');
   }
 </script>
 
